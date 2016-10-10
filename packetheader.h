@@ -3,6 +3,8 @@
 #define ETHER_ADDR_LEN 6
 #define IP4_ADDR_LEN 4
 #define LIBNET_LIL_ENDIAN 1
+
+#include <WinSock2.h>
 struct libnet_ethernet_hdr
 {
     u_int8_t  ether_dhost[ETHER_ADDR_LEN];/* destination ethernet address */
@@ -100,4 +102,10 @@ struct libnet_tcp_hdr
     u_int16_t th_sum;         /* checksum */
     u_int16_t th_urp;         /* urgent pointer */
 };
+
+
+
+
+
+
 #endif // PACKETHEADER_H

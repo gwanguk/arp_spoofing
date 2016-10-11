@@ -7,3 +7,5 @@
 3. ARP spoofing packet을 보냄
 
 4. 스푸핑 후 릴레이와 복구를 방지함
+
+5. victim과 gateway 모두 spoofing 하여 양방향으로relay 가능

